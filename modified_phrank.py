@@ -26,7 +26,6 @@ def load_term_hpo(term_to_hpo_file):
     term_hpo_file.close()
     return term_pheno_map
 
-# Find all the ancestors of a node and assign that node's frequency to the ancestors
 def closure(phenos, child_to_parent, freqs):
     all_ancestors = {}
     for i in range(len(phenos)):
@@ -35,7 +34,6 @@ def closure(phenos, child_to_parent, freqs):
         all_ancestors = all_ancestors | get_all_ancestors(pheno, child_to_parent,freq) | {pheno: 1+(freq/5)}
     return all_ancestors
 
-# Helper function to recursively find all ancestors of a node and assign that node's frequency to the ancestors
 def get_all_ancestors(hpo_term, child_to_parent_map,freq):
     ancestors = {}
     term = hpo_term
@@ -76,8 +74,6 @@ def load_gene_symbol_map(GENE_TO_SYMBOL):
 
 
 class Phrank:
-    # Compute the IC and Marginal IC of a phenotype with respect to disease
-    # mIC to be used in phenotype set match score calculation
     @staticmethod
     def compute_information_content(annotations_map, child_to_parent_map):
         information_content, marginal_information_content = {}, {}
@@ -110,7 +106,6 @@ class Phrank:
             marginal_information_content[pheno] = information_content[pheno] - parent_entropy
         return information_content, marginal_information_content
 
-    # Initialize the phrank object and set IC and mIC values
     def __init__(self, dagfile, diseaseannotationsfile=None, diseasegenefile=None, geneannotationsfile=None):
         """Initialize Phrank object with the disease annotations file or gene annotations file"""
         self._child_to_parent, self._parent_to_children = load_maps(dagfile)
@@ -123,7 +118,6 @@ class Phrank:
             self._IC, self._marginal_IC = Phrank.compute_information_content(self._gene_pheno_map, self._child_to_parent)
             self._gene_and_disease = False
 
-    # Calculate the score of matching two phenotype sets with relative frequencies in the disease phenotype data
     def compute_phenotype_match(self, patient_phenotypes, query_phenotypes, query_frequencies):
         """
         input: patient_phenotypes, query phenotypes - two lists of phenotypes
@@ -137,7 +131,7 @@ class Phrank:
         for phenotype in all_patient_phenotypes.keys() & all_query_phenotypes.keys():
             similarity_score += self._marginal_IC.get(phenotype, 0) * all_query_phenotypes[phenotype]
         return similarity_score
-
+    
 DAG="/Users/aidenmomtaz/Downloads/phrank/demo/data/hpodag.txt"
 DISEASE_TO_PHENO="/Users/aidenmomtaz/Downloads/phrank/demo/data/rare_diseases.txt"
 XML = "/Users/aidenmomtaz/Downloads/phrank/demo/data/en_product4.xml"
@@ -145,7 +139,7 @@ DISEASE_TO_GENE="/Users/aidenmomtaz/Downloads/phrank/demo/data/gene_to_disease.b
 GENE_TO_PHENO="/Users/aidenmomtaz/Downloads/phrank/demo/data/gene_to_pheno.amelie.txt"
 p_hpo = Phrank(DAG, diseaseannotationsfile=DISEASE_TO_PHENO, diseasegenefile=DISEASE_TO_GENE)
 
-# defining the patient phenotype set
+# defining the phenotype sets
 patient_phenotypes = ['HP:0000027','HP:0000098','HP:0000218','HP:0002088','HP:0002099','HP:0001945','HP:0000719']
 
 # Read the Rare Diseases XML File and create a dict of disease: (phenotypes, frequencies)
@@ -181,7 +175,6 @@ for disorder in root.findall(".//Disorder"):
     # Store in dictionary
     disorder_dict[disorder_name] = hpo_list
 
-# Calculate phenotype match scores and output the top 5 highest scores and their corresponding disease
 disease_similarities = {}
 for disease in disorder_dict:
     disease_phenotypes = []
@@ -193,3 +186,26 @@ for disease in disorder_dict:
 disease_similarities = sorted(disease_similarities.items(), key=lambda item: item[1])
 print((disease_similarities[:-6:-1]))
      
+patients = {"patient1" : ("unkown",['HP:0000077','HP:0030765','HP:0012115','HP:0002088','HP:0002099','HP:0001945','HP:0000719']),
+            "patient2" : ("unkown",['HP:0000975','HP:0002018','HP:0000421','HP:0012393','HP:0004406','HP:0002321']),
+            "patient3" : ("unkown",['HP:0000900','HP:0002000','HP:0000400','HP:0010000','HP:0004000','HP:0002321']),
+            "patient4" : ("unkown",['HP:0000975','HP:0002018','HP:0000421','HP:0012393','HP:0004406','HP:0002000']),
+            "patient5" : ("unkown",['HP:0001975','HP:0002118','HP:0001421','HP:0011393','HP:0014406','HP:0012321'])}
+
+# Update the disease of a patient and update patients with similar phenotypes
+def update_disease(patient: str, disease: str,
+                   patients: dict[str, tuple[str, list[str]]]) -> dict[str, tuple[str, list[str]]]:
+    phrankObject = Phrank(DAG, diseaseannotationsfile=DISEASE_TO_PHENO, diseasegenefile=DISEASE_TO_GENE)
+    patients[patient] = (disease, patients[patient][1])
+    for person in patients:
+        if person != patient:
+            dummy_freqs = [0 for element in range(len(patients[person][1]))]
+            score = phrankObject.compute_phenotype_match(patients[patient][1],patients[person][1],dummy_freqs)
+            adjustedScore = score/min(len(patients[patient][1]),len(patients[person][1]))
+            threshold = 0.5 # variable to change, needs to be tested further
+            print(adjustedScore)
+            if adjustedScore>threshold:
+                patients[person] = (disease, patients[person][1])
+    return patients
+
+#print(update_disease("patient2","DiseaseX",patients))
